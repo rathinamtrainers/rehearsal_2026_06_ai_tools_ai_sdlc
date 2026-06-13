@@ -35,7 +35,10 @@ def validate_password_complexity(pw: str) -> str:
 class RegisterRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     email: EmailStr
-    password: str
+    # bcrypt silently ignores bytes past 72, so without this cap any password
+    # sharing the first 72 bytes of the registered one would authenticate —
+    # a silent auth bypass. Cap the length; the complexity rules run after.
+    password: str = Field(max_length=72)
 
     @field_validator("password")
     @classmethod
