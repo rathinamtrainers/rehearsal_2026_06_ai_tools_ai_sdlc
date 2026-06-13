@@ -96,3 +96,36 @@ def test_me_returns_current_user_with_token(client):
     r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
     assert r.json()["email"] == VALID["email"]
+
+
+# ---- token lifecycle (review-flagged gaps) --------------------------------
+
+def test_me_rejects_token_after_token_version_bump(client, db):
+    """A token issued before token_version is incremented must stop working
+    (EC-AUTH-JWT-03) — the invariant behind bulk revocation after a reset."""
+    from sqlalchemy import select
+
+    from app.models import User
+
+    _register(client)
+    token = _login(client).json()["access_token"]  # carries tv=0
+
+    user = db.scalar(select(User).where(User.email == VALID["email"]))
+    user.token_version += 1
+    db.commit()
+
+    r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 401
+
+
+def test_me_rejects_expired_access_token(client, monkeypatch):
+    """An expired access token is rejected at a protected route (EC-AUTH-JWT-01)."""
+    from app.config import settings
+
+    _register(client)
+    # Issue an already-expired token by making the TTL negative for this login.
+    monkeypatch.setattr(settings, "access_token_ttl_minutes", -1)
+    token = _login(client).json()["access_token"]
+
+    r = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 401
