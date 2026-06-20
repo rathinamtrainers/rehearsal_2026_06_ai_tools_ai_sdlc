@@ -1,0 +1,54 @@
+/* ============================================================
+   LearnFlow frontend — global entry point.
+   Token layers first (order matters: fonts must precede the rest),
+   then app-level resets and the auth-screen keyframes carried over
+   from the LearnFlow Auth design.
+   ============================================================ */
+
+@import url('./tokens/fonts.css');
+@import url('./tokens/colors.css');
+@import url('./tokens/typography.css');
+@import url('./tokens/spacing.css');
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--text-body);
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Animations from the design spec */
+@keyframes lf-fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@keyframes lf-blob {
+  from { transform: translate(0, 0) scale(1); }
+  to   { transform: translate(18px, -22px) scale(1.06); }
+}
+
+@keyframes lf-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+  }
+}
