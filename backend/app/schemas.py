@@ -28,7 +28,10 @@ def validate_password_complexity(value: str) -> str:
 class RegisterRequest(BaseModel):
     name: str = Field(min_length=1, max_length=255)
     email: EmailStr
-    password: str
+    # Cap at 72: bcrypt silently truncates input beyond 72 bytes, and hashing an
+    # arbitrarily long string still costs the full work factor — an unbounded
+    # field is a CPU-exhaustion (DoS) vector. (PR review High #4)
+    password: str = Field(max_length=72)
 
     @field_validator("password")
     @classmethod
@@ -38,7 +41,8 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    # Same bcrypt 72-byte cap as registration — bounds work done per login attempt.
+    password: str = Field(max_length=72)
 
 
 class PasswordResetRequest(BaseModel):
