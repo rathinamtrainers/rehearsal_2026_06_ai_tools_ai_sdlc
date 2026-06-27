@@ -328,7 +328,7 @@
             "type": "string",
             "format": "email",
             "title": "Email",
-            "description": "Email to send a reset link to. The response is identical whether or not it exists."
+            "description": "Email to send a reset link to (identical response whether or not it exists)."
           }
         },
         "type": "object",
@@ -360,7 +360,7 @@
             "type": "string",
             "maxLength": 72,
             "title": "Password",
-            "description": "At least 8 chars with 1 uppercase, 1 digit, and 1 special character. Capped at 72 bytes (bcrypt limit)."
+            "description": "8+ chars with 1 uppercase, 1 digit, and 1 special char. Capped at 72 bytes (bcrypt limit)."
           }
         },
         "type": "object",
@@ -387,7 +387,7 @@
           "refresh_token": {
             "type": "string",
             "title": "Refresh Token",
-            "description": "Opaque token used to obtain a new access token; only its hash is stored server-side."
+            "description": "Opaque token to obtain a new access token; only its hash is stored."
           },
           "token_type": {
             "type": "string",

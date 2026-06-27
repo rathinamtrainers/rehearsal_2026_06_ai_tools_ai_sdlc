@@ -36,14 +36,14 @@ def get_current_user(
     """
     try:
         payload = decode_access_token(token)
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Access token has expired. Please refresh your session.",
             headers={"WWW-Authenticate": 'Bearer realm="learnflow", error="token_expired"'},
-        )
-    except jwt.PyJWTError:
-        raise _UNAUTHORIZED
+        ) from exc
+    except jwt.PyJWTError as exc:
+        raise _UNAUTHORIZED from exc
 
     user_id = payload.get("sub")
     if not user_id:

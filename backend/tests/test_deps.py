@@ -5,7 +5,7 @@ a specific failure branch that the normal login flow never produces.
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import jwt
 from conftest import login, register
@@ -16,7 +16,7 @@ from app.models import User
 
 def _make_token(**claims) -> str:
     """Sign an arbitrary claim set with the app's configured JWT secret/alg."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {"iat": now, "exp": now + timedelta(minutes=15), **claims}
     return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
@@ -27,7 +27,7 @@ def _auth(token: str) -> dict[str, str]:
 
 def test_me_expired_token_unauthorized(client):
     # exp in the past => jwt.ExpiredSignatureError => 401 (deps.py:31-36).
-    past = datetime.now(timezone.utc) - timedelta(minutes=5)
+    past = datetime.now(UTC) - timedelta(minutes=5)
     token = jwt.encode(
         {"sub": "whoever", "token_version": 0, "iat": past, "exp": past},
         settings.jwt_secret_key,

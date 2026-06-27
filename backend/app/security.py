@@ -4,7 +4,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 
 import jwt
@@ -64,7 +64,7 @@ def _verify_key() -> str:
 
 def create_access_token(user: User) -> str:
     """Build and sign a short-lived access JWT carrying the user's id, role, and token_version."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": user.id,
         "role": user.role.value,
@@ -91,5 +91,5 @@ def generate_refresh_token() -> tuple[str, str, datetime]:
     """Return (raw_token, sha256_hash, expires_at)."""
     raw = secrets.token_urlsafe(48)
     token_hash = hashlib.sha256(raw.encode("utf-8")).hexdigest()
-    expires_at = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_ttl_days)
+    expires_at = datetime.now(UTC) + timedelta(days=settings.refresh_token_ttl_days)
     return raw, token_hash, expires_at

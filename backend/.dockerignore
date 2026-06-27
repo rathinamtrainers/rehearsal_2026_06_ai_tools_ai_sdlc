@@ -1,0 +1,17 @@
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+tests/
+scripts/
+*.db
+.env
+.git/
+README.md
+UC-1-requirements.md
+requirements-dev.txt

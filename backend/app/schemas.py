@@ -40,7 +40,7 @@ class RegisterRequest(BaseModel):
     # field is a CPU-exhaustion (DoS) vector. (PR review High #4)
     password: str = Field(
         max_length=72,
-        description="At least 8 chars with 1 uppercase, 1 digit, and 1 special character. Capped at 72 bytes (bcrypt limit).",
+        description="8+ chars with 1 uppercase, 1 digit, and 1 special char. Capped at 72 bytes (bcrypt limit).",
     )
 
     model_config = ConfigDict(
@@ -70,7 +70,7 @@ class LoginRequest(BaseModel):
 class PasswordResetRequest(BaseModel):
     """Payload for ``POST /auth/password-reset/request`` — the email to send a reset link to."""
 
-    email: EmailStr = Field(description="Email to send a reset link to. The response is identical whether or not it exists.")
+    email: EmailStr = Field(description="Email to send a reset link to (identical response whether or not it exists).")
 
     model_config = ConfigDict(json_schema_extra={"example": {"email": "priya@example.com"}})
 
@@ -79,7 +79,7 @@ class TokenResponse(BaseModel):
     """Successful-login response: a short-lived access token and a long-lived refresh token."""
 
     access_token: str = Field(description="Signed JWT for the Authorization: Bearer header; expires in ~15 min.")
-    refresh_token: str = Field(description="Opaque token used to obtain a new access token; only its hash is stored server-side.")
+    refresh_token: str = Field(description="Opaque token to obtain a new access token; only its hash is stored.")
     token_type: str = Field(default="bearer", description="Always 'bearer'.")
 
     model_config = ConfigDict(

@@ -1,0 +1,14 @@
+[tool.ruff]
+# Pinned config so local and CI linting are identical regardless of ruff's
+# evolving defaults. Run: `ruff check .`
+target-version = "py313"
+line-length = 120
+extend-exclude = [".venv", "alembic/versions"]
+
+[tool.ruff.lint]
+# pycodestyle errors/warnings, pyflakes, isort, pyupgrade, flake8-bugbear.
+select = ["E", "W", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately import fixtures/helpers in ways linters dislike.
+"tests/*" = ["F811"]
