@@ -2,7 +2,8 @@
 
 Each test gets its own throwaway database file and a `get_db` dependency
 override, so tests never touch the real `learnflow.db` and never see each
-other's rows.
+other's rows. A `db` fixture exposes a Session on the *same* database so tests
+can set up state (e.g. a DEACTIVATED user) the public API can't reach.
 """
 from __future__ import annotations
 
@@ -13,7 +14,8 @@ from collections.abc import Iterator
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session, sessionmaker
 
 import app.models  # noqa: F401 — import registers the ORM tables on Base.metadata
 from app.database import Base, get_db
@@ -23,19 +25,31 @@ VALID_PASSWORD = "Password1!"  # meets the complexity rules: 8+, upper, digit, s
 
 
 @pytest.fixture
-def client() -> Iterator[TestClient]:
+def engine() -> Iterator[Engine]:
     # A fresh temp SQLite file per test => full isolation.
     fd, db_path = tempfile.mkstemp(suffix=".db", prefix="learnflow_test_")
     os.close(fd)
-    engine = create_engine(
+    eng = create_engine(
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False},
     )
-    TestingSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=eng)
+    try:
+        yield eng
+    finally:
+        eng.dispose()
+        os.remove(db_path)
 
+
+@pytest.fixture
+def session_factory(engine: Engine) -> sessionmaker:
+    return sessionmaker(bind=engine, autocommit=False, autoflush=False)
+
+
+@pytest.fixture
+def client(session_factory: sessionmaker) -> Iterator[TestClient]:
     def override_get_db() -> Iterator:
-        db = TestingSessionLocal()
+        db = session_factory()
         try:
             yield db
         finally:
@@ -47,8 +61,16 @@ def client() -> Iterator[TestClient]:
             yield test_client
     finally:
         app.dependency_overrides.clear()
-        engine.dispose()
-        os.remove(db_path)
+
+
+@pytest.fixture
+def db(session_factory: sessionmaker) -> Iterator[Session]:
+    """A Session on the same DB the client uses, for direct state setup/asserts."""
+    session = session_factory()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 def register(client: TestClient, email: str, password: str = VALID_PASSWORD, name: str = "Test User"):

@@ -5,3 +5,7 @@ venv/
 .env
 *.db
 keys/
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
