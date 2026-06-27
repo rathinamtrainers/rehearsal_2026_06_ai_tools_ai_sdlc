@@ -12,3 +12,8 @@ select = ["E", "W", "F", "I", "UP", "B"]
 [tool.ruff.lint.per-file-ignores]
 # Tests deliberately import fixtures/helpers in ways linters dislike.
 "tests/*" = ["F811"]
+
+[tool.pytest.ini_options]
+# Put the backend/ root (rootdir, where this file lives) on sys.path so `app`
+# imports under bare `pytest` in CI, not just `python -m pytest` locally.
+pythonpath = ["."]
