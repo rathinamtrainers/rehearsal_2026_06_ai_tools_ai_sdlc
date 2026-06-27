@@ -23,10 +23,12 @@ _DUMMY_HASH = _password_hash.hash("dummy-password-for-constant-time")
 
 
 def hash_password(password: str) -> str:
+    """Hash a plaintext password with bcrypt for storage."""
     return _password_hash.hash(password)
 
 
 def verify_password(password: str, password_hash: str) -> bool:
+    """Return True if ``password`` matches the stored bcrypt ``password_hash``."""
     return _password_hash.verify(password, password_hash)
 
 
@@ -40,6 +42,7 @@ def dummy_verify(password: str) -> None:
 
 @lru_cache
 def _signing_key() -> str:
+    """The key used to *sign* tokens: a PEM private key for RS*, else the HS shared secret."""
     if settings.jwt_algorithm.startswith("RS"):
         if not settings.jwt_private_key_path:
             raise RuntimeError("RS256 requires JWT_PRIVATE_KEY_PATH")
@@ -50,6 +53,7 @@ def _signing_key() -> str:
 
 @lru_cache
 def _verify_key() -> str:
+    """The key used to *verify* tokens: a PEM public key for RS*, else the HS shared secret."""
     if settings.jwt_algorithm.startswith("RS"):
         if not settings.jwt_public_key_path:
             raise RuntimeError("RS256 requires JWT_PUBLIC_KEY_PATH")
@@ -59,6 +63,7 @@ def _verify_key() -> str:
 
 
 def create_access_token(user: User) -> str:
+    """Build and sign a short-lived access JWT carrying the user's id, role, and token_version."""
     now = datetime.now(timezone.utc)
     payload = {
         "sub": user.id,

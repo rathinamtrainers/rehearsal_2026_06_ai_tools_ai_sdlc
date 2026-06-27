@@ -26,6 +26,14 @@ def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[Session, Depends(get_db)],
 ) -> User:
+    """Resolve the authenticated :class:`User` from a bearer token, or raise.
+
+    Decodes and verifies the JWT, then enforces, in order: a present ``sub``
+    claim, an existing user, a matching ``token_version`` (so a password reset
+    can bulk-invalidate old tokens), and an ``ACTIVE`` account status. Raises
+    ``401`` for any token/identity problem and ``403`` for a valid token whose
+    account is not active. Used as a FastAPI dependency via :data:`CurrentUser`.
+    """
     try:
         payload = decode_access_token(token)
     except jwt.ExpiredSignatureError:

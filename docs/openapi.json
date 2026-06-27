@@ -1,0 +1,512 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "LearnFlow Auth API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Register a new account",
+        "description": "Create a new learner account.\n\nThe email is normalised to lowercase and must be unique (a duplicate returns\n`409`). The password is validated for complexity (`422` on failure) and stored\nas a bcrypt hash \u2014 never in plaintext. Depending on `REGISTER_ACTIVE`, the new\naccount is either immediately `ACTIVE` or `PENDING_VERIFICATION`; the returned\nmessage reflects which. No token is issued here \u2014 the client logs in separately.",
+        "operationId": "register_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Account created. The message tells the user whether they can log in immediately (`REGISTER_ACTIVE=true`) or must verify their email first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An account with this email already exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed \u2014 e.g. malformed email, or a password that doesn't meet the complexity rules (8+ chars, 1 uppercase, 1 digit, 1 special).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Log in and obtain access + refresh tokens",
+        "description": "Authenticate a user and issue tokens.\n\nOn success returns an access token (JWT, ~15 min) plus a refresh token, and\nclears any prior failed-attempt/lockout state. Failure modes are deliberately\ndistinct: a wrong password or unknown email both return a generic `401`\n(enumeration-safe, constant-time); 5 failures inside the rolling window lock\nthe account and subsequent attempts return `429`; a correct password on a\n`PENDING_VERIFICATION` or `DEACTIVATED` account returns `403`.",
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Authenticated. Returns a short-lived access token and a long-lived refresh token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid email or password. The same generic error is returned for an unknown email and a wrong password, to avoid account enumeration.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The credentials are correct but the account cannot log in: email not yet verified (`PENDING_VERIFICATION`) or the account is `DEACTIVATED`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Account temporarily locked after too many failed attempts (5 failures / 10 min \u2192 locked for 15 min).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation failed \u2014 e.g. a malformed email address.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/password-reset/request": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Request a password-reset link",
+        "description": "Begin the password-reset flow for an email address.\n\nAlways returns `202` with the same message whether or not the email maps to an\naccount, so the endpoint can't be used to discover which emails are registered.\nNOTE: actual email dispatch and reset-token persistence are out of UC-1 scope \u2014\nthis is the enumeration-safe entry point the full flow will build on.",
+        "operationId": "password_reset_request_auth_password_reset_request_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get the current authenticated user",
+        "description": "Return the profile of the user identified by the `Authorization: Bearer` token.\n\nThe token is validated by the `get_current_user` dependency (signature, expiry,\n`token_version`, and account status) before this handler runs.",
+        "operationId": "me_auth_me_get",
+        "responses": {
+          "200": {
+            "description": "The authenticated user's profile.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, malformed, expired, or invalidated bearer token.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token is valid but the account is no longer active.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "OAuth2PasswordBearer": []
+          }
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "meta"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Health Health Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ErrorResponse": {
+        "properties": {
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "A human-readable explanation of why the request was rejected."
+          }
+        },
+        "type": "object",
+        "required": [
+          "detail"
+        ],
+        "title": "ErrorResponse",
+        "description": "The body returned for 4xx auth errors (FastAPI's ``HTTPException`` shape).",
+        "example": {
+          "detail": "Invalid email or password."
+        }
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "The email the account was registered with (case-insensitive)."
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 72,
+            "title": "Password",
+            "description": "The account password. Capped at 72 bytes (bcrypt limit)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest",
+        "description": "Payload for ``POST /auth/login`` \u2014 email plus password.",
+        "example": {
+          "email": "priya@example.com",
+          "password": "Password1!"
+        }
+      },
+      "MessageResponse": {
+        "properties": {
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "A human-readable status message."
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "MessageResponse",
+        "description": "A generic human-readable status message (used by register and password-reset).",
+        "example": {
+          "message": "Account created. You can now log in."
+        }
+      },
+      "PasswordResetRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "Email to send a reset link to. The response is identical whether or not it exists."
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "PasswordResetRequest",
+        "description": "Payload for ``POST /auth/password-reset/request`` \u2014 the email to send a reset link to.",
+        "example": {
+          "email": "priya@example.com"
+        }
+      },
+      "RegisterRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Display name; 1\u2013255 characters."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "Email address; normalised to lowercase and used as the login identifier."
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 72,
+            "title": "Password",
+            "description": "At least 8 chars with 1 uppercase, 1 digit, and 1 special character. Capped at 72 bytes (bcrypt limit)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "email",
+          "password"
+        ],
+        "title": "RegisterRequest",
+        "description": "Payload for ``POST /auth/register`` \u2014 a new account's name, email, and password.",
+        "example": {
+          "email": "priya@example.com",
+          "name": "Priya Sharma",
+          "password": "Password1!"
+        }
+      },
+      "TokenResponse": {
+        "properties": {
+          "access_token": {
+            "type": "string",
+            "title": "Access Token",
+            "description": "Signed JWT for the Authorization: Bearer header; expires in ~15 min."
+          },
+          "refresh_token": {
+            "type": "string",
+            "title": "Refresh Token",
+            "description": "Opaque token used to obtain a new access token; only its hash is stored server-side."
+          },
+          "token_type": {
+            "type": "string",
+            "title": "Token Type",
+            "description": "Always 'bearer'.",
+            "default": "bearer"
+          }
+        },
+        "type": "object",
+        "required": [
+          "access_token",
+          "refresh_token"
+        ],
+        "title": "TokenResponse",
+        "description": "Successful-login response: a short-lived access token and a long-lived refresh token.",
+        "example": {
+          "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI...",
+          "refresh_token": "k3sN1q...redacted...9bYp",
+          "token_type": "bearer"
+        }
+      },
+      "UserResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Server-generated UUID for the user."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "The user's email address."
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "The user's display name."
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "Authorization role: 'learner', 'instructor', or 'admin'."
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Account status: 'ACTIVE', 'PENDING_VERIFICATION', 'LOCKED', or 'DEACTIVATED'."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "name",
+          "role",
+          "status"
+        ],
+        "title": "UserResponse",
+        "description": "The current authenticated user's public profile (``GET /auth/me``).",
+        "example": {
+          "email": "priya@example.com",
+          "id": "5f1d2c8e-9b3a-4c7d-8e2f-1a2b3c4d5e6f",
+          "name": "Priya Sharma",
+          "role": "learner",
+          "status": "ACTIVE"
+        }
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    },
+    "securitySchemes": {
+      "OAuth2PasswordBearer": {
+        "type": "oauth2",
+        "flows": {
+          "password": {
+            "scopes": {},
+            "tokenUrl": "auth/login"
+          }
+        }
+      }
+    }
+  }
+}
