@@ -78,16 +78,103 @@ jobs:
           test "${ok:-0}" = "1"
 
   deploy:
-    name: Deploy
+    name: Deploy to Cloud Run
     runs-on: ubuntu-latest
     # Gate: deploy runs only after lint, tests, AND the image build/smoke all pass...
     needs: [lint, test, docker-build]
     # ...and only on a push to main (never on PRs).
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
+    # gcloud/frontend steps run from the repo root, not backend/.
+    defaults:
+      run:
+        working-directory: .
+    outputs:
+      backend_url: ${{ steps.backend.outputs.url }}
+      frontend_url: ${{ steps.frontend.outputs.url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Deploy
+
+      # Authenticate to GCP with a service-account key stored as a secret.
+      - uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+      - uses: google-github-actions/setup-gcloud@v2
+
+      # Apply DB migrations to Neon before the new revision serves traffic.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Migrate Neon (alembic upgrade head)
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.NEON_DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
-          echo "All checks passed — deploying ${{ github.sha }}."
-          echo "Replace this step with the real deploy (registry push, infra apply, etc.)."
+          pip install -r requirements.txt
+          alembic upgrade head
+
+      # Deploy the FastAPI backend; DB URL is Neon (comma delimiter is safe — the
+      # Neon URL has no comma, only the pair-separator between the two vars does).
+      - name: Deploy backend
+        id: backend
+        run: |
+          gcloud run deploy learnflow-auth \
+            --source ./backend --region us-east1 --allow-unauthenticated --quiet \
+            --set-env-vars "DATABASE_URL=${{ secrets.NEON_DATABASE_URL }},JWT_SECRET=${{ secrets.JWT_SECRET }}"
+          echo "url=$(gcloud run services describe learnflow-auth --region us-east1 --format='value(status.url)')" >> "$GITHUB_OUTPUT"
+
+      # Frontend: VITE_API_BASE must be baked at BUILD time, so write .env.production
+      # with the just-deployed backend URL before building.
+      - name: Deploy frontend
+        id: frontend
+        run: |
+          echo "VITE_API_BASE=${{ steps.backend.outputs.url }}" > frontend/.env.production
+          gcloud run deploy learnflow-frontend \
+            --source ./frontend --region us-east1 --allow-unauthenticated --quiet
+          echo "url=$(gcloud run services describe learnflow-frontend --region us-east1 --format='value(status.url)')" >> "$GITHUB_OUTPUT"
+
+      # CORS with credentials can't use '*', so allow the exact frontend origin.
+      # '^@^' delimiter because the value contains commas (the frontend URL has no '@').
+      - name: Allow the frontend origin in backend CORS
+        run: |
+          gcloud run services update learnflow-auth --region us-east1 --quiet \
+            --update-env-vars "^@^CORS_ORIGINS=http://localhost:5173,${{ steps.frontend.outputs.url }}"
+
+  e2e:
+    name: testRigor E2E
+    runs-on: ubuntu-latest
+    # Only after a successful deploy, only on main.
+    needs: deploy
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      # Trigger the testRigor suite (it already targets the frontend Cloud Run URL)
+      # and block on its result: HTTP 200 = passed, 230 = failed, 227/228 = running.
+      - name: Trigger testRigor and wait for pass/fail
+        env:
+          TR_APP: ${{ secrets.TESTRIGOR_APP_ID }}
+          TR_TOKEN: ${{ secrets.TESTRIGOR_AUTH_TOKEN }}
+        run: |
+          set -euo pipefail
+          echo "Triggering testRigor run..."
+          curl -sf -X POST \
+            -H 'Content-type: application/json' \
+            -H "auth-token: ${TR_TOKEN}" \
+            --data '{"forceCancelPreviousTesting": true}' \
+            "https://api.testrigor.com/api/v1/apps/${TR_APP}/retest"
+          echo "Polling for result..."
+          sleep 15
+          while true; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' -X GET \
+              -H "auth-token: ${TR_TOKEN}" -H 'Accept: application/json' \
+              "https://api.testrigor.com/api/v1/apps/${TR_APP}/status")
+            case "${code}" in
+              200) echo "testRigor E2E passed"; exit 0 ;;
+              230) echo "testRigor E2E FAILED"; exit 1 ;;
+              227|228) echo "...still running (${code})"; sleep 20 ;;
+              *) echo "Unexpected testRigor status ${code}"; exit 1 ;;
+            esac
+          done

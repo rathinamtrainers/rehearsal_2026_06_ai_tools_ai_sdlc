@@ -10,3 +10,5 @@ pydantic[email]==2.10.4
 pydantic-settings==2.7.0
 pwdlib[bcrypt]==0.2.1
 PyJWT==2.13.0
+# Postgres driver for Cloud SQL (prod). SQLite (dev) needs no driver.
+psycopg2-binary==2.9.10
