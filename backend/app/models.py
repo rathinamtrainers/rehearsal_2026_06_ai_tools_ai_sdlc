@@ -5,7 +5,7 @@ import enum
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, Enum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -89,3 +89,68 @@ class RefreshToken(Base):
     replaced_by: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
     user: Mapped[User] = relationship(back_populates="refresh_tokens")
+
+
+class QuestionType(str, enum.Enum):
+    MCQ = "MCQ"
+    TRUE_FALSE = "TRUE_FALSE"
+
+
+class AttemptStatus(str, enum.Enum):
+    IN_PROGRESS = "IN_PROGRESS"
+    COMPLETED = "COMPLETED"
+    TIMED_OUT = "TIMED_OUT"
+
+
+class Quiz(Base):
+    __tablename__ = "quizzes"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    time_limit_minutes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passing_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=80)
+    max_attempts: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    questions: Mapped[list[Question]] = relationship(
+        "Question", back_populates="quiz", cascade="all, delete-orphan"
+    )
+
+
+class Question(Base):
+    __tablename__ = "questions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    quiz_id: Mapped[str] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"), index=True, nullable=False)
+    question_text: Mapped[str] = mapped_column(String(1000), nullable=False)
+    question_type: Mapped[QuestionType] = mapped_column(
+        Enum(QuestionType, native_enum=False, length=32), nullable=False
+    )
+
+    options: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    correct_option_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_true: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    quiz: Mapped[Quiz] = relationship("Quiz", back_populates="questions")
+
+
+class Attempt(Base):
+    __tablename__ = "attempts"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
+    quiz_id: Mapped[str] = mapped_column(ForeignKey("quizzes.id", ondelete="CASCADE"), index=True, nullable=False)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True, nullable=False)
+
+    status: Mapped[AttemptStatus] = mapped_column(
+        Enum(AttemptStatus, native_enum=False, length=32),
+        default=AttemptStatus.IN_PROGRESS,
+        nullable=False,
+    )
+    start_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    end_time: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    pass_status: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+
+    answers: Mapped[dict | None] = mapped_column(JSON, nullable=True)
