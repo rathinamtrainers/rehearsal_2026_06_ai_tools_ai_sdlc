@@ -131,3 +131,49 @@ class UserResponse(BaseModel):
             }
         }
     )
+
+
+class QuizCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=255)
+    time_limit_minutes: int | None = Field(default=None, ge=1)
+    passing_threshold: int = Field(default=80, ge=0, le=100)
+    max_attempts: int | None = Field(default=None, ge=1)
+
+
+class QuestionCreate(BaseModel):
+    question_text: str = Field(min_length=1, max_length=1000)
+    question_type: str = Field(pattern="^(MCQ|TRUE_FALSE)$")
+    options: dict[str, str] | None = None
+    correct_option_id: str | None = None
+    is_true: bool | None = None
+
+
+class QuestionResponse(BaseModel):
+    id: str
+    question_text: str
+    question_type: str
+    options: dict[str, str] | None = None
+
+
+class QuizResponse(BaseModel):
+    id: str
+    title: str
+    time_limit_minutes: int | None
+    passing_threshold: int
+    max_attempts: int | None
+    questions: list[QuestionResponse] = []
+
+
+class AnswerSubmit(BaseModel):
+    answers: dict[str, str | bool | None]
+
+
+from datetime import datetime
+class AttemptResponse(BaseModel):
+    id: str
+    quiz_id: str
+    status: str
+    start_time: datetime
+    end_time: datetime | None
+    score: float | None
+    pass_status: bool | None
